@@ -1,0 +1,24 @@
+# Web Framework & Server
+fastapi>=0.110.0
+uvicorn>=0.27.1
+
+# LLM Orchestration & Agent
+langgraph>=0.0.26
+langchain-ollama>=0.1.0
+
+# FastMCP for Tool Exposure
+fastmcp>=3.0.1
+
+# Vector DB and Embeddings for Local Search
+faiss-cpu>=1.13.2
+sentence-transformers>=2.5.1
+
+# Database & Data Validation
+sqlalchemy>=2.0.27
+pydantic>=2.9.0
+
+# Frontend
+streamlit>=1.32.0
+
+# Payment Simulation
+stripe>=8.5.0

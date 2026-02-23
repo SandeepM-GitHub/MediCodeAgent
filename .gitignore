@@ -1,0 +1,10 @@
+# Python environment
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Generated Local Databases and Vector Indexes
+backend/data/medical.db
+backend/data/*.index
+backend/data/vector_meta.json
