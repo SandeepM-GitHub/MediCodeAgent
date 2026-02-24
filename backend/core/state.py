@@ -22,6 +22,10 @@ class ClaimState(TypedDict):
     explanation: Optional[str]
     confidence_score: float
 
-    # Status
+    # Payer Decision Fields
     status: str # 'review_needed', 'approved', 'rejected'
-    messages: List[str] # Log of what happened
+    rejection_reason: Optional[str]
+    rule_id: Optional[str]
+
+    # Log of what happened
+    messages: List[str] 

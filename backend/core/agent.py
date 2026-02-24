@@ -1,6 +1,7 @@
 import json
 import operator
 from typing import TypedDict, Annotated, List
+from backend.core.rules import run_payer_rules
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -145,7 +146,8 @@ def save_claim(state: ClaimState):
             cpt_code = state.get("final_cpt_code"),
             confidence_score = state.get("confidence_score", 0.0),
             explanation = state.get("explanation"),
-            status = state.get("status", "pending")
+            status = state.get("status", "pending"),
+            rejection_reason = state.get("rejection_reason")
         )
         db.add(new_claim)
         db.commit()
@@ -162,6 +164,28 @@ def save_claim(state: ClaimState):
     finally: 
         db.close()
 
+# ---------- Node 5: PAYER RULE ENGINE -------------
+def adjudicate_claim(state: ClaimState):
+    """
+    Passes the final codes through the hardcoded business rules.
+    """
+    print("--- NODE: Payer Adjudication ---")
+
+    decision = run_payer_rules (
+        icd_code = state.get("final_icd10_code", ""),
+        cpt_code = state.get("final_cpt_code", ""),
+        confidence = state.get("confidence_score", 0.0)
+    )
+
+    print(f"Adjudication Result: {decision['status'].upper()} (Rule: {decision['rule_id']})")
+
+    return {
+        "status": decision["status"],
+        "rejection_reason": decision["reason"],
+        "rule_id": decision["rule_id"],
+        "messages": [f"Payer Engine: {decision['reason']}"]
+    }
+
 # ---------- BUILD THE GRAPH -----------------------
 def build_agent():
     workflow = StateGraph(ClaimState)
@@ -170,13 +194,15 @@ def build_agent():
     workflow.add_node("extract", extract_entities)
     workflow.add_node("lookup", lookup_codes)
     workflow.add_node("decide", finalize_coding)
+    workflow.add_node("adjudicate", adjudicate_claim)
     workflow.add_node("save", save_claim)
 
     # Add Edges (The flow)
     workflow.set_entry_point("extract")
     workflow.add_edge("extract", "lookup")
     workflow.add_edge("lookup", "decide")
-    workflow.add_edge("decide", "save")
+    workflow.add_edge("decide", "adjudicate")
+    workflow.add_edge("adjudicate", "save")
     workflow.add_edge("save", END)
 
     return workflow.compile()
