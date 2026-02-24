@@ -10,6 +10,7 @@ from langchain_core.tools import tool
 from backend.core.llm import get_llm
 from backend.core.state import ClaimState
 from backend.mcp.server import search_icd10, search_cpt # Reuse our smart search tools!
+from backend.data.db import SessionLocal, Claim
 
 # ---------- Node 1: EXTRACTION -------------------
 def extract_entities(state: ClaimState):
@@ -126,7 +127,41 @@ def finalize_coding(state: ClaimState):
         }
     except:
         return {"status": "error", "messages": ["Failed to parse decision."]}
-    
+
+# ---------- Node 4: SAVE TO DB --------------------
+def save_claim(state: ClaimState):
+    """
+    Saves the final agent decisions to the SQLite database.
+    """
+    print("--- Node: Saving to DB ---")
+    db = SessionLocal()
+    try:
+        # Map our LangGraph memory state to our SQL Database row
+        new_claim = Claim(
+            clinical_note = state["clinical_note"],
+            extracted_diagnosis = state.get("extracted_diagnosis"),
+            extracted_procedure = state.get("extracted_procedure"),
+            icd10_code = state.get("final_icd10_code"),
+            cpt_code = state.get("final_cpt_code"),
+            confidence_score = state.get("confidence_score", 0.0),
+            explanation = state.get("explanation"),
+            status = state.get("status", "pending")
+        )
+        db.add(new_claim)
+        db.commit()
+        db.refresh(new_claim) # Grabs the auto=generated ID from the Database
+
+        print(f"SUCCESS: Claim securely saved to SQLite Database with ID: {new_claim.id}")
+
+        return {
+            "message": [f"Claim saved to DB with ID: {new_claim.id}"]
+        }
+    except Exception as e:
+        print(f"Error while saving claim: {e}")
+        return {"messages": ["Error saving to DB."]}
+    finally: 
+        db.close()
+
 # ---------- BUILD THE GRAPH -----------------------
 def build_agent():
     workflow = StateGraph(ClaimState)
@@ -135,11 +170,13 @@ def build_agent():
     workflow.add_node("extract", extract_entities)
     workflow.add_node("lookup", lookup_codes)
     workflow.add_node("decide", finalize_coding)
+    workflow.add_node("save", save_claim)
 
     # Add Edges (The flow)
     workflow.set_entry_point("extract")
     workflow.add_edge("extract", "lookup")
     workflow.add_edge("lookup", "decide")
-    workflow.add_edge("decide", END)
+    workflow.add_edge("decide", "save")
+    workflow.add_edge("save", END)
 
     return workflow.compile()
