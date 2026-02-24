@@ -89,21 +89,25 @@ def finalize_coding(state: ClaimState):
     print("--- Node: Final Decision ---")
 
     prompt = f"""
-    You are a Senior Medical Coder. 
+    You are a strictly logical, highly critical Senior Medical Coder. 
     
     1. Analyze the PATIENT NOTE: "{state['clinical_note']}"
     2. Review the ICD-10 SEARCH RESULTS: {state['icd10_candidates']}
     3. Review the CPT SEARCH RESULTS: {state['cpt_candidates']}
     
-    Task: Select the EXACT code from the results that best matches the note. 
-    If no code is a good match, state "None".
-    
-    Return ONLY a JSON object:
+    Tasks and Rules: 
+    1. Select the EXACT code from the results that matches the note. 
+    2. If the search results DO NOT logically match the patient note (e.g., foot injury vs throat code), you MUST output "None" for that code. Do not guess.
+    3. Output ONLY a valid JSON object. No markdown, no conversational text.
+    4. CRITICAL: For the "confidence" field, you MUST look at the numeric Score in the search results and use the lowest score associated with your chosen codes. 
+    If you output "None", the confidence must be 0.0
+
+    Return ONLY a JSON object in this format:
     {{
-        "final_icd10": "Code",
-        "final_cpt": "Code",
+        "final_icd10": "Code or None",
+        "final_cpt": "Code or None",
         "reasoning": "Brief explanation of why these codes were chosen based on the evidence.",
-        "confidence": 0.99
+        "confidence": <replace_with_actual_float_score>
     }}
     """
     
@@ -119,15 +123,26 @@ def finalize_coding(state: ClaimState):
 
     try:
         data = json.loads(content)
+        # Force float conversion to prevent string errors
+        conf = float(data.get("confidence", 0.0))
         return {
             "final_icd10_code": data.get("final_icd10"),
             "final_cpt_code": data.get("final_cpt"),
             "explanation": data.get("reasoning"),
-            "confidence_score": data.get("confidence", 0.0),
-            "status": "approved" if data.get("confidence", 0.0) > 0.8 else "review_needed"
+            "confidence_score": conf,
+            # "status": "approved" if data.get("confidence", 0.0) > 0.8 else "review_needed"
+            "status": "pending"
         }
-    except:
-        return {"status": "error", "messages": ["Failed to parse decision."]}
+    except Exception as e:
+        print(f"Error parsing LLM decision: {e}")
+        # return {"status": "error", "messages": ["Failed to parse decision."]}
+        # return {"status": "error", "confidence_score": 0.0}
+        return {
+            "final_icd10_code": "None", 
+            "final_cpt_code": "None", 
+            "confidence_score": 0.0,
+            "status": "pending"
+        }
 
 # ---------- Node 4: SAVE TO DB --------------------
 def save_claim(state: ClaimState):
@@ -169,7 +184,7 @@ def adjudicate_claim(state: ClaimState):
     """
     Passes the final codes through the hardcoded business rules.
     """
-    print("--- NODE: Payer Adjudication ---")
+    print("--- Node: Payer Adjudication ---")
 
     decision = run_payer_rules (
         icd_code = state.get("final_icd10_code", ""),
