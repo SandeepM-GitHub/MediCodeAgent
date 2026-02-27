@@ -19,7 +19,7 @@ META_PATH = os.path.join(DATA_DIR, "vector_meta.json")
 
 # 3. Load Model and FAISS Indexes Globally (so they stay in memory)
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Starting MCP Server. Loading embedding model on: {device.upper()}")
+print(f"Starting MCP Server as Librarian. Loading embedding model on: {device.upper()}")
 embedder = SentenceTransformer('all-MiniLM-L6-v2', device=device)
 
 # Load FAISS indexes into memory

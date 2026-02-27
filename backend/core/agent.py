@@ -2,6 +2,7 @@ import json
 import operator
 from typing import TypedDict, Annotated, List
 from backend.core.rules import run_payer_rules
+from backend.core.payments import process_claim_payout
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -149,9 +150,23 @@ def save_claim(state: ClaimState):
     """
     Saves the final agent decisions to the SQLite database.
     """
-    print("--- Node: Saving to DB ---")
+    print("--- Node: Saving to DB and Processing Payment ---")
     db = SessionLocal()
     try:
+        # Determine Payout Amount (Simplified: $50 for Strep, $30 for others)
+        amount = 50.0 if state.get("final_cpt_code") == "87880" else 20.0
+
+        status = state.get("status", "pending")
+        tx_id = None
+
+        # Trigger Payment if "Approved"
+        if status == "approved":
+            print(f"💰 Claim {status.upper()}! Triggering Stripe Payout of ${amount}...")
+            payment_res = process_claim_payout(999, amount) # Using dummy ID for demo
+            if payment_res["success"]:
+                tx_id = payment_res["transaction_id"]
+                print(f"✅ Payment Successful! TX: {tx_id}")
+
         # Map our LangGraph memory state to our SQL Database row
         new_claim = Claim(
             clinical_note = state["clinical_note"],
@@ -162,7 +177,9 @@ def save_claim(state: ClaimState):
             confidence_score = state.get("confidence_score", 0.0),
             explanation = state.get("explanation"),
             status = state.get("status", "pending"),
-            rejection_reason = state.get("rejection_reason")
+            rejection_reason = state.get("rejection_reason"),
+            payment_amount = amount if tx_id else 0.0,
+            stripe_transaction_id = tx_id
         )
         db.add(new_claim)
         db.commit()

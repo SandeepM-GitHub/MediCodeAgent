@@ -4,7 +4,7 @@ def run_test():
     agent = build_agent()
 
     # A test case: Sore throat (should map to ICD J02.9) and Strep Test (CPT 87880)
-    test_note = "Patient complains of severe sore throat. Performed rapid strep test."
+    test_note = "Patient complains of Acute pharyngitis. Performed rapid strep test."
     
     print(f"Input Note: {test_note}\n")
     print("Running Agent Pipeline...\n")
